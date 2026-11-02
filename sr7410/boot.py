@@ -13,6 +13,9 @@ HOOK = b"""#!/bin/sh
 # BEGIN SR7410 SSH AUTOSTART
 if [ -f /Plugin/sr7410-ssh/autostart.enabled ]; then
     /Plugin/sr7410-ssh/start.sh >/var/sr7410-ssh-boot.log 2>&1 &
+    if [ -f /Plugin/sr7410-larktun/autostart.enabled ]; then
+        /Plugin/sr7410-larktun/start.sh >/var/sr7410-larktun-boot.log 2>&1 &
+    fi
 fi
 # END SR7410 SSH AUTOSTART
 """

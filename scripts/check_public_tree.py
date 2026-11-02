@@ -13,13 +13,15 @@ def main():
         ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
         cwd=ROOT, capture_output=True, check=True)
     failures = []
-    private_name = re.compile(r"(?i)(?:config.*\.(?:bin|xml)|authorized_keys|known_hosts|"
-                              r"ssh_config|.*host_key.*|.*\.(?:ipk|pem|key|tar\.gz))$")
+    private_name = re.compile(r"(?i)(?:config.*\.(?:bin|xml)|authorized_keys|known_hosts(?:\..*)?|"
+                              r"ssh_config(?:\..*)?|.*host_key.*|.*\.state(?:\..*)?|"
+                              r"linux-larktun[d]?-.*|.*\.(?:ipk|pem|key|authkey|tar\.gz))$")
     patterns = [
         ("private key material", re.compile(r"-----BEGIN (?:OPENSSH |RSA |EC |DSA )?PRIVATE KEY-----")),
         ("literal home directory", re.compile(r"/(?:Users|home)/[A-Za-z0-9_.-]+/")),
         ("literal SSH public key", re.compile(r"ssh-ed25519 [A-Za-z0-9+/]{50,}={0,2}")),
         ("literal MAC address", re.compile(r"(?<![A-Za-z0-9])(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}(?![A-Za-z0-9])")),
+        ("node private key", re.compile(r"(?:privkey|machinekey):[0-9a-fA-F]{32,}")),
     ]
     for name in set(result.stdout.decode().strip("\0").split("\0")):
         if not name:

@@ -4,7 +4,8 @@
 
 - zte-config-utility 作为固定 Git revision 的 Python 依赖安装，其实现与许可证保留在上游：[MIT LICENSE](https://github.com/mkst/zte-config-utility/blob/master/LICENSE)。
 - Dropbear、glibc、GCC 运行库等由构建脚本从 Entware 获取。固定版本、原包 SHA256 与下载位置在 entware.lock.json 中。本仓库不再分发这些二进制或原厂测速组件。原始源码、补丁及构建资料见 [Entware](https://github.com/Entware/Entware) 及对应上游项目；若另外发布构建后的二进制，应履行各组件的许可证要求。
-- telnetlib3、PyCryptodome 与 wcwidth 以 Python 依赖形式安装，按各自上游许可证使用。
+- telnetlib3、PyCryptodome、wcwidth 与 certifi 以固定版本 Python 依赖形式安装，按各自上游许可证使用。certifi 提供的 Mozilla CA 证书集会写入本地构建包；相关许可见 [certifi 上游](https://github.com/certifi/python-certifi)。
+- Larktun 程序从其官方下载通道获取，版本、大小和 SHA256 位于 larktun.lock.json。仓库仅包含构建与安装脚本，不分发其程序二进制、账号、Auth Key 或节点身份。使用与再分发时应遵循 Larktun 的适用条款。
 - docs/images/telnet-guide.png 是根据本文实测流程生成的 AI 辅助说明图，供本教程分享使用；路由器外观为示意，不作为官方产品图片或品牌背书。图中未使用真实设备截图、配置备份、用户密码、用户密钥或设备标识。
 
 SR7410 型号的公开 Key / IV 是配置编解码参数，不是任何一台用户设备的登录凭据。

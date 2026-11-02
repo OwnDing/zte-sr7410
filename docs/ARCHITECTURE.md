@@ -37,8 +37,20 @@ SSH 使用系统原生 UID 0 账号，关闭密码认证，监听 LAN IPv4 与�
 
 原厂 /etc/init.norm 优先从 /apps/apps/dlspeed_rt.tar.gz 解压组件，其中 /apps 指向 /Plugin；否则使用 /etc/dlspeed_rt.tar.gz。
 
-电脑首先确认原厂组件 SHA256 与实测版本相同，保留归档全部成员，只修改 dlspeed_rt/dlspeed_monitor.sh，添加受 autostart.enabled 标记控制的后台启动语句。再次传输并回读核对后，才写入可写覆盖入口。原厂只读组件始终保留。
+电脑首先确认原厂组件 SHA256 与实测版本相同，保留归档全部成员，只修改 dlspeed_rt/dlspeed_monitor.sh，添加受 autostart.enabled 标记控制的后台启动语句。SSH 初装通过 Telnet 完整回读核对，后续 Larktun 通过严格主机校验的 SSH 更新共享入口。原厂只读组件始终保留。
 
 启用时拒绝其他软件已经存在的覆盖包。保存本工具创建包的完整副本，禁用时使用 cmp 逐字节核对归属，避免删除后来被其他软件改动的包。禁用标记后，即使之前解压出的 monitor 仍存在，也不会再次触发 SSH 自启。
 
 卸载只停止 PID 文件对应且命令行属于本工具的进程，不使用 killall dropbear。RAM 中可能被其他进程使用的 PTY 挂载不强制卸载，下一次重启自然释放。
+
+## Larktun
+
+Larktun 安装器依赖已经配置的 SSH。构建器从官方 HTTPS 下载锁定的静态 ARM64 二进制，检查大小、SHA256、架构及不存在动态 ELF 解释器；压缩副本与独立 CA 证书写入可写闪存，运行程序在 RAM 中解压。每台设备自行生成状态，构建包不含身份材料。
+
+安装包和 Auth Key 都通过已有严格主机校验的 SSH 通道发送，不重新开启文件共享或关闭 SSH 主机校验。Key 从隐藏终端输入直接进入 SSH stdin，仅在路由器 RAM 文件中短暂存在，以 file: 参数读取；正常退出和常见中断信号会清理文件。授权结果的原始错误输出不直接回显，避免泄漏 Key 或登录链接。
+
+用户态模式不依赖原厂 TUN，也不会自动接管家庭 LAN。显式 TCP Serve 将私网端口转给回环地址的原厂 HTTP / Dropbear，保留原认证方式。独立私网 SSH 配置从已固定的 LAN 主机公钥派生，新增文件保持私有，不改变 LAN 连接配置。
+
+共享启动钩子在 SSH 自启标记存在时启动 SSH，并在 Larktun 标记也存在时后台启动 Larktun。刷新入口前后均检查包归属与组件内容，只更新本仓库持有的快照与覆盖包，避免与原有 SSH 回退逻辑冲突。单独禁用 Larktun只移除自己的标记；禁用 SSH 自启会禁用整个共享入口。
+
+Larktun 卸载删除自己的程序、RAM 文件及节点状态，保留 SSH，控制台节点由用户另行清理。完整卸载应先处理 Larktun，再处理共享入口的 SSH。

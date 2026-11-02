@@ -16,8 +16,13 @@ config*.xml
 *.key
 *host_key*
 authorized_keys
-known_hosts
-ssh_config
+known_hosts*
+ssh_config*
 .env
 .env.*
 *.log
+*.state
+*.state.*
+*.authkey
+linux-larktun-*
+linux-larktund-*

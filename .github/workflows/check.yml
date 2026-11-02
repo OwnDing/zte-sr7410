@@ -18,5 +18,5 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y bsdextrautils shellcheck
       - run: python -m pip install -r requirements.txt
       - run: python -m unittest discover -s tests -v
-      - run: shellcheck -s sh router/*.sh
+      - run: shellcheck -s sh router/*.sh router/larktun/*.sh
       - run: python scripts/check_public_tree.py

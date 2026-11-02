@@ -1,0 +1,21 @@
+{
+  "version": "1.86.2-dev20260503",
+  "base_urls": [
+    "https://download2.larktun.com/",
+    "https://download.larktun.com/"
+  ],
+  "binaries": [
+    {
+      "filename": "linux-larktun-arm64",
+      "target": "larktun",
+      "bytes": 20194228,
+      "sha256": "97397c8d36d76d8ad22bec9e9ff5e94dce9df834a390ff545cbca6e45565dc75"
+    },
+    {
+      "filename": "linux-larktund-arm64",
+      "target": "larktund",
+      "bytes": 38277968,
+      "sha256": "f092513e5347a05ff5024dd8663afbc1892ec4a612cb067e80206d2ab26db133"
+    }
+  ]
+}

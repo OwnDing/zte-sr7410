@@ -1,6 +1,8 @@
-# 中兴 BE7200 Pro+ / SR7410：开启 Telnet 与 SSH
+# 中兴 BE7200 Pro+ / SR7410：Telnet、SSH 与 Larktun
 
 一套面向 **ZXSLC SR7410、原厂固件 V1.0.0.7B4.8000** 的配置备份法工具：离线修改 config.bin 开启局域网 Telnet，再安装独立运行的 Dropbear SSH，包含交互终端 PTY 修复、可选开机自启与卸载。
+
+完成 SSH 后，还可以按[第 11 节](#11-安装-larktun通过私网远程访问路由器)安装 Larktun，通过同一工作空间远程访问路由器网页和原生 SSH。完整说明见 [Larktun 安装指南](docs/LARKTUN.md)。
 
 **每台路由器必须使用自己的配置备份和自己的 SSH 密钥。仓库不提供任何真实设备的 config.bin、密码、主机密钥、授权公钥或远程访问凭据。**
 
@@ -19,11 +21,12 @@
 | Telnet | 重启后获得 UID 0 Shell |
 | SSH | Ed25519 公钥认证、命令执行、交互终端均已实测成功 |
 | 自启原理 | 原厂测速组件覆盖包入口；已验证重启后启动 SSH |
+| Larktun | ARM64 静态程序、闪存压缩 / RAM 解压、用户态模式；端口使用 TCP Serve |
 | 本仓库的通用安装器 | 从实测步骤整理；见 [验证记录](docs/VALIDATION.md)，需按本文完成本机验收 |
 | 电脑端验证 | macOS / Python 3.10、3.12、3.13；Linux 与 Windows 完整设备安装未实测 |
 | 其他型号 / 固件 | 未验证；配置格式或原厂组件不符时脚本停止 |
 
-这是用户配置修改与附加软件安装流程，**不会刷写固件**。SSH 使用专用运行库，不替换系统 libc，也不修改原厂 /etc/passwd。Larktun 并非 SSH 的前置依赖，本仓库不包含任何 Larktun 账号或授权信息。
+这是用户配置修改与附加软件安装流程，**不会刷写固件**。SSH 使用专用运行库，不替换系统 libc，也不修改原厂 /etc/passwd。Larktun 安装器使用已配置的 SSH 连接；仓库不包含任何 Larktun 账号、Auth Key 或设备登录状态。
 
 Telnet 明文传输，只在可信局域网操作，保持 Wan_Enable=0；SSH 也仅绑定本机 LAN 地址及 127.0.0.1，不创建端口转发或 WAN 放行规则。
 
@@ -221,6 +224,8 @@ python scripts/router.py status --host 192.168.5.1 --config private/telnet/confi
 
 ## 10. 停用与回退
 
+如果已安装第 11 节的 Larktun，完整回退时先卸载 Larktun，再卸载 SSH；两者共用自启入口。
+
 只关闭自启：
 
 ~~~bash
@@ -238,6 +243,82 @@ python scripts/router.py uninstall-ssh --host 192.168.5.1 --config private/telne
 RAM 中的 PTY 挂载保留到下一次重启；不会改变系统 /dev。上述命令不修改 Telnet 开关。
 
 关闭 Telnet：在管理后台恢复**你自己的原始 config.bin** 并重启。恢复用户配置不会自动删除 /Plugin 中安装的软件或覆盖包；如需全部回退，应先卸载 SSH，再恢复原配置。
+
+## 11. 安装 Larktun，通过私网远程访问路由器
+
+请先完成 SSH 登录、verify-ssh 和第 9 节的 SSH 自启配置。安装、停止和卸载期间使用局域网 SSH 连接。
+
+这个原厂系统的 /usr、/etc 等路径只读，闪存容量有限。本项目使用专用安装器：公开 ARM64 程序以 gzip 保存到 /Plugin/sr7410-larktun，启动时解压到 /var/sr7410-larktun，并启用 userspace-networking。不要直接在路由器运行普通 Linux 的一键安装命令。
+
+### 安装与授权
+
+更新依赖后安装：
+
+~~~bash
+python -m pip install -r requirements.txt
+python scripts/larktun_tool.py install
+~~~
+
+安装器下载并校验 larktun.lock.json 固定版本，通过加密 SSH 传输，不上传 Auth Key、账号或旧节点状态。需要约 29 MiB 的压缩程序空间，外加 4 MiB 闪存余量，以及安装期间至少 128 MiB 可用 RAM。已有安装会被保留并停止操作。
+
+在 [Larktun 控制台与官方说明](https://docs.larktun.com/docs/getting-started/linux-install-larktun)对应的工作空间中，为这台设备生成独立的一次性 Auth Key，然后在自己的交互终端执行：
+
+~~~bash
+python scripts/larktun_tool.py login
+python scripts/larktun_tool.py status
+~~~
+
+按提示粘贴密钥，输入不回显；不要将真实密钥写进命令、README、Issue 或截图。默认控制服务器为 https://hs.larktun.com，可用 --login-server 指定自己的 HTTPS 控制服务器。工具通过 SSH stdin 发送密钥，路由器临时文件会在授权后删除；登录状态仅保存在设备的私有目录。
+
+必须看到状态为 Running，并取得**自己设备**的私网 IP。默认关闭接管 DNS 和接受其他节点路由。
+
+### 开放路由器网页与 SSH
+
+用户态节点能 ping 通，不代表原厂网页和 SSH 自动可访问。显式创建两条私网 TCP 转发：
+
+~~~bash
+python scripts/larktun_tool.py expose-router
+python scripts/larktun_tool.py configure-remote-ssh
+~~~
+
+第一条命令将本节点私网 TCP 80、22 转到本机 127.0.0.1 的对应端口，仅在 Larktun 网络内按 ACL 提供访问，不开启公网 Funnel 或 WAN 端口映射。SSH 使用其他端口时加 --ssh-port，例如 --ssh-port 2222。
+
+第二条命令生成 private/ssh/ssh_config.larktun 与 known_hosts.larktun，沿用此前通过可信 LAN 会话固定的设备主机公钥，保留严格校验，不修改原有 LAN 配置。
+
+另一台设备连接同一账号 / 工作空间的 Larktun 后，用 status 显示的本机 IP 打开 **http://你的设备私网IP/**；当前电脑连接 Larktun 后可使用：
+
+~~~bash
+ssh -F private/ssh/ssh_config.larktun sr7410-vpn
+~~~
+
+请在手机关闭 Wi-Fi、改用移动网络后验证网页；SSH 也需实际登录验证。SSH 仍使用本机原有密钥认证，网页仍使用自己的管理密码。其他电脑或手机的 SSH 客户端还需使用已被路由器授权的密钥，不要公开或随意复制私钥。
+
+此方案只配置路由器本身两个端口，不会自动打通整个家庭 LAN。
+
+### 自启、检查和回退
+
+~~~bash
+python scripts/larktun_tool.py enable-autostart
+~~~
+
+工具在确认现有覆盖包属于本仓库后，将其更新为 SSH 与 Larktun 共用的启动入口；不覆盖其他软件的包，不自动重启。随后自行在后台重启，依次运行 verify-ssh、Larktun status，再完成移动网络访问验收。
+
+**Larktun 自启依赖共享 SSH 自启入口。关闭 SSH 自启会同时停止 Larktun 开机启动；单独关闭 Larktun 自启不影响 SSH。**
+
+~~~bash
+python scripts/larktun_tool.py disable-autostart
+python scripts/larktun_tool.py stop
+~~~
+
+重新运行 start 可使用设备保存的状态恢复连接。清除该节点全部 Serve 转发用 reset-serve。彻底卸载 Larktun：
+
+~~~bash
+python scripts/larktun_tool.py uninstall
+~~~
+
+这会删除设备上的节点登录状态，但保留 SSH；在控制台清理对应节点。若要完全回退，顺序为 **Larktun → SSH → 恢复原始配置**。
+
+更多端口、自启升级、证书、空间不足、只 ping 通和私网 SSH 主机校验问题，见 [完整指南](docs/LARKTUN.md)。
 
 ## 常见问题
 
@@ -272,9 +353,14 @@ scripts/config_tool.py          配置修改入口
 scripts/build_ssh.py            只构建 SSH 运行包，不连接路由器
 scripts/router.py               安装、验证、自启、状态和卸载入口
 scripts/check_public_tree.py    待发布文件隐私检查
+scripts/build_larktun.py        构建固定版本 Larktun 压缩包
+scripts/larktun_tool.py         安装、授权、状态、私网访问、自启与卸载
 sr7410/                        电脑端实现
 router/                        路由器端启动、停止、安装与回退脚本
 entware.lock.json               固定版本、官方地址和 SHA256
+larktun.lock.json               固定 Larktun 版本、官方源和 SHA256
+router/larktun/                 Larktun 设备端脚本
+docs/LARKTUN.md                 完整 Larktun 安装与远程访问指南
 docs/images/telnet-guide.png    操作说明图
 tests/                         完全合成的测试数据与本地模拟 Telnet 服务
 private/                       本机私有文件，Git 忽略
