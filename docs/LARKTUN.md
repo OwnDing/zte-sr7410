@@ -172,7 +172,7 @@ ssh -F private/ssh/ssh_config.larktun sr7410-vpn
 
 手机或另一台电脑如使用不同密钥，需另行把该设备公钥加入路由器的授权列表。系统 UID 0 用户名见自己电脑的 private/ssh/ssh_config，不要照抄其他设备的用户名，也不要在 Issue 中贴出个人私钥。
 
-本教程未配置整个家庭 LAN 的子网转发，也未启用出口节点；访问家中 NAS、摄像头等其他设备，需要另外设计与验证相应网络路径。
+以上 TCP Serve 步骤只处理路由器本身。访问 NAS、摄像头等其他 LAN 设备，可继续按第 6 节显式配置子网路由；这里没有启用出口节点。
 
 ## 5. 开机自启
 
@@ -209,7 +209,45 @@ python scripts/larktun_tool.py status
 
 再用手机移动网络验证网页，并实际验证私网 SSH。状态 Running 或 ping 通都不等于端口访问验收完成。
 
-## 6. 运维与卸载
+## 6. 可选：宣告家庭 LAN 子网
+
+**用户态不等于只能访问节点本身。** [上游 netstack 说明](https://tailscale.com/docs/reference/kernel-vs-userspace-routers)明确支持用户态子网路由：TCP、UDP 由进程重新发起到目标设备的连接，ping 通过代理方式处理；其他 ICMP 和 SCTP 等协议不等同于内核三层转发。重度吞吐或完整 IP 协议需求需要另评估内核模式。
+
+本设备已使用原有用户态程序成功写入子网宣告，并核对其余偏好和 Serve 设置不变。宣告成功不代表已经从外部访问成功，控制台批准、ACL、客户端接收与目标设备服务仍需分别验收。
+
+以下统一以 **192.168.1.0/24 作为示例**，请先确认自己的 br0 实际 LAN 网段，再替换：
+
+~~~bash
+python scripts/larktun_tool.py advertise-subnet --subnet 192.168.1.0/24
+python scripts/larktun_tool.py subnet-status
+~~~
+
+脚本只允许当前 br0 直接连接范围内的规范 RFC1918 IPv4 子网；拒绝默认路由、公网地址和不匹配的网段。它合并已有宣告，并使用 set 只修改 AdvertiseRoutes，不重新登录、不重置 DNS、不打开接受其他路由的开关，也不改动 Serve。
+
+然后：
+
+1. 登录与该节点相同的 Larktun 账号 / 工作空间，在“路由”页面批准目标网段。
+2. 确认 ACL 允许需要的用户访问该网段及目标端口；宣告命令不会自动扩大 ACL。
+3. 外面的客户端需接受子网路由。Linux 客户端可按其 CLI 使用 set --accept-routes=true；手机与桌面客户端请核对自己的子网路由设置。
+4. 手机关闭 Wi-Fi 使用移动网络，访问 LAN 设备的原 IP 和实际服务端口，避免本机就在 LAN 中造成误判。
+
+例如，目标 NAS 实际地址如果是示例网段中的 192.168.1.10，应访问它原有的网页或 SSH 服务，而不是给每台设备另外安装 Larktun。目标设备的认证和本机防火墙仍生效。广播、mDNS 发现、任意 IP 协议或保留原客户端源 IP的场景不应按普通三层网桥假设。
+
+网关自身的 accept-routes=false 可以保留；它控制是否接收**其他节点**路由，与宣告自己的 LAN 是两个设置。不要为了宣告 LAN 开启出口节点或清空其他偏好。
+
+subnet-status 优先从 debug netmap 的 SelfNode 读取 AllowedIPs / PrimaryRoutes，失败时回退 status，并标明 route_data_source。实测 status 的本机字段未显示已批准子网，但网络映射能够正确显示；不能单凭回退字段为空就判定未批准。工具只输出本机路由，不公开网络映射中的节点身份或其他设备信息。
+
+本次原始设备流程已经完成宣告、控制台批准、网络映射中的允许与主用路由确认，并由手机在移动网络下通过路由器原始 LAN 地址打开后台。该结果验证子网路径；NAS 等其他设备的端口和自身访问控制仍需分别确认。
+
+撤销单个宣告：
+
+~~~bash
+python scripts/larktun_tool.py withdraw-subnet --subnet 192.168.1.0/24
+~~~
+
+它只移除指定网段，不清空其他已宣告路由，也不删除原来的网页 / SSH Serve。偏好由守护进程保存至设备状态，重启后仍应按实际客户端连接进行验收。
+
+## 7. 运维与卸载
 
 ~~~bash
 python scripts/larktun_tool.py disable-autostart

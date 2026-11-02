@@ -195,18 +195,84 @@ def configure_remote_ssh(ssh, client_dir):
     print("连接：" + "ssh -F " + shlex.quote(str(target_config)) + " sr7410-vpn")
 
 
+def change_subnet(ssh, subnet: str, withdraw=False):
+    network = ipaddress.ip_network(subnet, strict=True)
+    private_ranges = tuple(ipaddress.ip_network(value) for value in
+                           ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))
+    if network.version != 4 or not any(network.subnet_of(r) for r in private_ranges):
+        raise ValueError("Only a canonical RFC1918 IPv4 LAN prefix is supported")
+    node = json.loads(ssh.run(CLI + " status --json").decode())
+    if node.get("BackendState") != "Running":
+        raise RuntimeError("Larktun is not Running")
+    if not withdraw:
+        addresses = ssh.run("ip -4 addr show br0 | awk '/inet / {print $2}'").decode().split()
+        if not any(network.subnet_of(ipaddress.ip_interface(value).network) for value in addresses):
+            raise ValueError("The requested subnet is not inside a directly connected br0 network")
+    before = json.loads(ssh.run(CLI + " debug prefs").decode())
+    routes = list(before.get("AdvertiseRoutes") or [])
+    target = str(network)
+    if withdraw:
+        changed = [route for route in routes if route != target]
+    else:
+        changed = routes if target in routes else routes + [target]
+    if changed == routes:
+        print("该子网已经处于所请求的宣告状态；无需更改。")
+        return
+    serve = ssh.run(CLI + " serve status --json")
+    ssh.run(CLI + " set --advertise-routes=" + shlex.quote(",".join(changed)))
+    after = json.loads(ssh.run(CLI + " debug prefs").decode())
+    if list(after.get("AdvertiseRoutes") or []) != changed:
+        raise RuntimeError("Advertised-route read-back does not match the requested change")
+    if ({k: v for k, v in before.items() if k != "AdvertiseRoutes"} !=
+            {k: v for k, v in after.items() if k != "AdvertiseRoutes"}):
+        raise RuntimeError("Other preferences changed; inspect the device before continuing")
+    if ssh.run(CLI + " serve status --json") != serve:
+        raise RuntimeError("Serve configuration changed; inspect the device before continuing")
+    print(("已撤销子网宣告：" if withdraw else "已宣告子网：") + target)
+    print("其他路由、DNS、登录信息和 Serve 设置保持不变。")
+    if not withdraw:
+        print("下一步：控制台批准该路由、ACL 放行，并由外部客户端接受路由后测试目标服务。")
+
+
+def subnet_status(ssh):
+    prefs = json.loads(ssh.run(CLI + " debug prefs").decode())
+    node = json.loads(ssh.run(CLI + " status --json").decode())
+    own = node.get("Self") or {}
+    source = "status"
+    try:
+        network_map = json.loads(ssh.run(CLI + " debug netmap").decode())
+        mapped_self = network_map.get("SelfNode")
+        if isinstance(mapped_self, dict):
+            own, source = mapped_self, "network_map"
+    except (RuntimeError, ValueError):
+        pass
+    advertised = prefs.get("AdvertiseRoutes") or []
+    allowed = own.get("AllowedIPs") or []
+    print(json.dumps({
+        "state": node.get("BackendState"),
+        "advertised_routes": advertised,
+        "route_data_source": source,
+        "self_allowed_ips": allowed,
+        "self_primary_routes": own.get("PrimaryRoutes") or [],
+        "allowed_advertised_routes": [prefix for prefix in advertised if prefix in allowed],
+        "note": "宣告与控制台批准不同；最终需从外部网络访问 LAN 中的实际服务。",
+    }, ensure_ascii=False, indent=2))
+
+
 def main():
     parser = argparse.ArgumentParser(description="通过已有 SSH 安装、登录和管理 SR7410 Larktun")
     parser.add_argument("action", choices=("install", "login", "status", "expose-router",
                                          "enable-autostart", "disable-autostart",
                                          "start", "stop", "reset-serve", "uninstall",
-                                         "configure-remote-ssh"))
+                                         "configure-remote-ssh", "advertise-subnet",
+                                         "withdraw-subnet", "subnet-status"))
     parser.add_argument("--client-dir", type=Path, default=Path("private/ssh"))
     parser.add_argument("--cache-dir", type=Path, default=Path(".cache/larktun"))
     parser.add_argument("--login-server", default="https://hs.larktun.com")
     parser.add_argument("--hostname", default="zte-sr7410")
     parser.add_argument("--web-port", type=int, default=80)
     parser.add_argument("--ssh-port", type=int, default=22)
+    parser.add_argument("--subnet", help="需要宣告/撤销的 LAN IPv4 网段，例如 192.168.1.0/24")
     args = parser.parse_args()
     try:
         ssh = SSH(args.client_dir.expanduser())
@@ -227,6 +293,12 @@ def main():
             enable_autostart(ssh)
         elif args.action == "configure-remote-ssh":
             configure_remote_ssh(ssh, args.client_dir.expanduser())
+        elif args.action in ("advertise-subnet", "withdraw-subnet"):
+            if not args.subnet:
+                raise ValueError("This action requires --subnet")
+            change_subnet(ssh, args.subnet, withdraw=args.action == "withdraw-subnet")
+        elif args.action == "subnet-status":
+            subnet_status(ssh)
         elif args.action == "disable-autostart":
             print(ssh.run(BASE + "/autostart.sh disable").decode().strip())
         elif args.action in ("start", "stop"):

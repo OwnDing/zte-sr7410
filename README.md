@@ -293,7 +293,14 @@ ssh -F private/ssh/ssh_config.larktun sr7410-vpn
 
 请在手机关闭 Wi-Fi、改用移动网络后验证网页；SSH 也需实际登录验证。SSH 仍使用本机原有密钥认证，网页仍使用自己的管理密码。其他电脑或手机的 SSH 客户端还需使用已被路由器授权的密钥，不要公开或随意复制私钥。
 
-此方案只配置路由器本身两个端口，不会自动打通整个家庭 LAN。
+以上命令只配置路由器本身两个端口，不会自动打通整个家庭 LAN。**用户态也可以做子网转发**；如需访问 NAS 等设备，另行宣告 LAN 网段，再在控制台批准并放行 ACL。例如下面的示例要求 br0 实际连接 192.168.1.0/24：
+
+~~~bash
+python scripts/larktun_tool.py advertise-subnet --subnet 192.168.1.0/24
+python scripts/larktun_tool.py subnet-status
+~~~
+
+请替换成自己的 LAN 网段。脚本保留其他已宣告路由、DNS、登录和 Serve 设置，不自动批准控制台路由或更改 ACL。批准后，让外部客户端接受子网路由，再通过 LAN 设备的原始 IP 验证 TCP 服务。用户态以连接代理方式支持 TCP、UDP，不能等同完整的三层 IP 转发。更多限制与回退见 [子网路由说明](docs/LARKTUN.md#6-可选宣告家庭-lan-子网)。
 
 ### 自启、检查和回退
 
