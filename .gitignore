@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+# Never publish router configuration, generated runtimes or device identities.
+private/
+build/
+.cache/
+config*.bin
+config*.xml
+*.ipk
+*.tar.gz
+*.tar.xz
+*.pem
+*.key
+*host_key*
+authorized_keys
+known_hosts
+ssh_config
+.env
+.env.*
+*.log
